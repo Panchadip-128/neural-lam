@@ -227,6 +227,84 @@ def crps_gauss(
     )
 
 
+def crps_ens(
+    pred,
+    target,
+    pred_std=None,
+    mask=None,
+    average_grid=True,
+    sum_vars=True,
+    ens_dim=1,
+    estimator="unbiased",
+    afc_alpha=None,
+):
+    """
+    CRPS estimated from ensemble members.
+    Rank-based O(S log S) implementation. RFC #335 aligned.
+    Returns entry-wise (..., N, F) then applies mask_and_reduce_metric.
+    """
+    num_ens = pred.shape[ens_dim]
+
+    assert num_ens > 1, (
+        f"CRPS requires at least 2 ensemble members, got {num_ens}."
+    )
+
+    mean_mae = torch.mean(
+        torch.abs(pred - target.unsqueeze(ens_dim)),
+        dim=ens_dim,
+    )
+
+    if estimator == "biased":
+        diff_factor = 1.0 / num_ens
+    elif estimator == "unbiased":
+        diff_factor = 1.0 / (num_ens - 1)
+    elif estimator == "almost-fair":
+        assert afc_alpha is not None, (
+            "afc_alpha must be provided for almost-fair estimator."
+        )
+        diff_factor = (num_ens - 1 + afc_alpha) / (num_ens * (num_ens - 1))
+    else:
+        raise NotImplementedError(f"Unknown estimator '{estimator}'.")
+
+    if num_ens == 2 and estimator == "unbiased":
+        pair_diffs_term = (
+            -0.5
+            * diff_factor
+            * torch.abs(
+                pred.select(ens_dim, 0) - pred.select(ens_dim, 1)
+            )
+        )
+    else:
+        ranks = pred.argsort(dim=ens_dim).argsort(dim=ens_dim) + 1
+        pair_diffs_term = diff_factor * torch.mean(
+            (num_ens + 1 - 2 * ranks) * pred,
+            dim=ens_dim,
+        )
+
+    crps_entry_wise = mean_mae + pair_diffs_term
+
+    return mask_and_reduce_metric(
+        crps_entry_wise,
+        mask=mask,
+        average_grid=average_grid,
+        sum_vars=sum_vars,
+    )
+
+
+def crps_ens_unbiased(pred, target, pred_std=None, mask=None,
+                      average_grid=True, sum_vars=True, ens_dim=1):
+    """Unbiased CRPS estimator."""
+    return crps_ens(pred, target, pred_std, mask, average_grid,
+                    sum_vars, ens_dim, estimator="unbiased")
+
+
+def crps_ens_biased(pred, target, pred_std=None, mask=None,
+                    average_grid=True, sum_vars=True, ens_dim=1):
+    """Biased CRPS estimator."""
+    return crps_ens(pred, target, pred_std, mask, average_grid,
+                    sum_vars, ens_dim, estimator="biased")
+
+
 DEFINED_METRICS = {
     "mse": mse,
     "mae": mae,
@@ -234,4 +312,7 @@ DEFINED_METRICS = {
     "wmae": wmae,
     "nll": nll,
     "crps_gauss": crps_gauss,
+    "crps_ens": crps_ens,
+    "crps_ens_unbiased": crps_ens_unbiased,
+    "crps_ens_biased": crps_ens_biased,
 }
