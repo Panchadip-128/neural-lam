@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Avoid eager download of the MEPS example dataset during pytest collection by lazily initializing it in `tests/conftest.py`, allowing tests to run without triggering a dataset download at import time. [#391](https://github.com/mllam/neural-lam/pull/391) @Saptami191
 
+- Fix `ARModel.all_gather_cat` to only flatten when `all_gather()` adds a new leading
+  rank dimension, preventing silent shape corruption on single-device runs. (fixes
+  incorrect flattening that merged batch and time dims). Closes #421. @RajdeepKushwaha5
+
 - `fractional_plot_bundle` now correctly multiplies by fraction instead of dividing
 [\#222](https://github.com/mllam/neural-lam/pull/222) @santhil-cyber
 

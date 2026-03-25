@@ -1,5 +1,7 @@
 # Standard library
 import os
+# Use non-interactive matplotlib backend to avoid Tk/Tcl requirement during tests
+os.environ.setdefault("MPLBACKEND", "Agg")
 from datetime import timedelta
 from pathlib import Path
 

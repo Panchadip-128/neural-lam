@@ -1,0 +1,48 @@
+[1mdiff --git a/CHANGELOG.md b/CHANGELOG.md[m
+[1mindex d976ad4..9b2cf53 100644[m
+[1m--- a/CHANGELOG.md[m
+[1m+++ b/CHANGELOG.md[m
+[36m@@ -36,6 +36,10 @@[m [mand this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0[m
+ [m
+ - Avoid eager download of the MEPS example dataset during pytest collection by lazily initializing it in `tests/conftest.py`, allowing tests to run without triggering a dataset download at import time. [#391](https://github.com/mllam/neural-lam/pull/391) @Saptami191[m
+ [m
+[32m+[m[32m- Fix `ARModel.all_gather_cat` to only flatten when `all_gather()` adds a new leading[m
+[32m+[m[32m  rank dimension, preventing silent shape corruption on single-device runs. (fixes[m
+[32m+[m[32m  incorrect flattening that merged batch and time dims). Closes #421. @RajdeepKushwaha5[m
+[32m+[m
+ - `fractional_plot_bundle` now correctly multiplies by fraction instead of dividing[m
+ [\#222](https://github.com/mllam/neural-lam/pull/222) @santhil-cyber[m
+ [m
+[1mdiff --git a/neural_lam/models/ar_model.py b/neural_lam/models/ar_model.py[m
+[1mindex f1bcb46..36c7a4a 100644[m
+[1m--- a/neural_lam/models/ar_model.py[m
+[1m+++ b/neural_lam/models/ar_model.py[m
+[36m@@ -327,7 +327,15 @@[m [mclass ARModel(pl.LightningModule):[m
+ [m
+         returns: (K*d1, d2, ...)[m
+         """[m
+[31m-        return self.all_gather(tensor_to_gather).flatten(0, 1)[m
+[32m+[m[32m        gathered = self.all_gather(tensor_to_gather)[m
+[32m+[m[32m        # In multi-device runs `all_gather` returns a tensor with a new[m
+[32m+[m[32m        # leading dimension for the rank (K, d1, d2, ...). On single-device[m
+[32m+[m[32m        # strategies it returns the tensor unchanged (d1, d2, ...). Only[m
+[32m+[m[32m        # flatten when a new leading dimension was added to avoid silently[m
+[32m+[m[32m        # corrupting shapes (see issue #421).[m
+[32m+[m[32m        if gathered.dim() > tensor_to_gather.dim():[m
+[32m+[m[32m            return gathered.flatten(0, 1)[m
+[32m+[m[32m        return gathered[m
+ [m
+     # newer lightning versions requires batch_idx argument, even if unused[m
+     # pylint: disable-next=unused-argument[m
+[1mdiff --git a/tests/conftest.py b/tests/conftest.py[m
+[1mindex 47237ed..ebde4c1 100644[m
+[1m--- a/tests/conftest.py[m
+[1m+++ b/tests/conftest.py[m
+[36m@@ -1,5 +1,7 @@[m
+ # Standard library[m
+ import os[m
+[32m+[m[32m# Use non-interactive matplotlib backend to avoid Tk/Tcl requirement during tests[m
+[32m+[m[32mos.environ.setdefault("MPLBACKEND", "Agg")[m
+ from datetime import timedelta[m
+ from pathlib import Path[m
+ [m

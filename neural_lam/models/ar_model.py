@@ -327,7 +327,15 @@ class ARModel(pl.LightningModule):
 
         returns: (K*d1, d2, ...)
         """
-        return self.all_gather(tensor_to_gather).flatten(0, 1)
+        gathered = self.all_gather(tensor_to_gather)
+        # In multi-device runs `all_gather` returns a tensor with a new
+        # leading dimension for the rank (K, d1, d2, ...). On single-device
+        # strategies it returns the tensor unchanged (d1, d2, ...). Only
+        # flatten when a new leading dimension was added to avoid silently
+        # corrupting shapes (see issue #421).
+        if gathered.dim() > tensor_to_gather.dim():
+            return gathered.flatten(0, 1)
+        return gathered
 
     # newer lightning versions requires batch_idx argument, even if unused
     # pylint: disable-next=unused-argument
